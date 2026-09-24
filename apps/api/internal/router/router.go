@@ -63,8 +63,15 @@ func New(h *handler.Handler) http.Handler {
 		get("/contracts/{id}/snapshot", h.ContractSnapshot)
 		get("/contracts/{id}/upgrades", h.ListContractUpgrades)
 		get("/contracts/{id}/health-score", h.GetContractHealthScore)
-		get("/contracts/{id}/stream", h.StreamEvents)
 		get("/contracts/{id}/graph", h.ContractGraph)
+
+		// Source verification (issue #263). Submitting source mutates the
+		// verification record, so it requires at least contributor role;
+		// reading the cached verdict stays open.
+		r.With(scope, contributor).Post("/contracts/{id}/verify", h.VerifyContract)
+		get("/contracts/{id}/verification", h.GetContractVerification)
+
+		get("/contracts/{id}/stream", h.StreamEvents)
 		get("/stream/events", h.StreamEventsSSE)
 
 

@@ -9,22 +9,23 @@ import (
 
 // MockStore is an in-memory Store + QueryStore implementation for unit tests.
 type MockStore struct {
-	contracts          map[string]Contract
-	events             []Event
-	invocations        []Invocation
-	storageEntries     []StorageEntry
-	syncStates         map[string]SyncState
-	globalStats        GlobalStats
-	monitored          map[string]MonitoredContract
-	healthChecks       []HealthCheck
-	alerts             []ContractAlert
-	apiKeys            []APIKey
-	contractUpgrades   []ContractUpgrade
-	watchlist          map[string]map[string]bool
-	alertSubscriptions []AlertSubscription
-	users              map[string]User
-	healthScores       map[string]ContractHealthScore
-	indexerCursors     map[string]uint32
+	contracts             map[string]Contract
+	events                []Event
+	invocations           []Invocation
+	storageEntries        []StorageEntry
+	syncStates            map[string]SyncState
+	globalStats           GlobalStats
+	monitored             map[string]MonitoredContract
+	healthChecks          []HealthCheck
+	alerts                []ContractAlert
+	apiKeys               []APIKey
+	contractUpgrades      []ContractUpgrade
+	watchlist             map[string]map[string]bool
+	alertSubscriptions    []AlertSubscription
+	users                 map[string]User
+	healthScores          map[string]ContractHealthScore
+	indexerCursors        map[string]uint32
+	contractVerifications map[string]ContractVerification
 
 	// Error injection
 	UpsertContractErr   error
@@ -42,19 +43,23 @@ type MockStore struct {
 	GetUserErr          error
 	ListUpgradesErr     error
 	GetHealthScoreErr   error
+
+	UpsertVerificationErr error
+	GetVerificationErr    error
 }
 
 // NewMockStore returns an initialized MockStore.
 func NewMockStore() *MockStore {
 	return &MockStore{
-		contracts:          make(map[string]Contract),
-		syncStates:         make(map[string]SyncState),
-		monitored:          make(map[string]MonitoredContract),
-		watchlist:          make(map[string]map[string]bool),
-		alerts:             make([]ContractAlert, 0),
-		alertSubscriptions: make([]AlertSubscription, 0),
-		users:              make(map[string]User),
-		indexerCursors:     make(map[string]uint32),
+		contracts:             make(map[string]Contract),
+		syncStates:            make(map[string]SyncState),
+		monitored:             make(map[string]MonitoredContract),
+		watchlist:             make(map[string]map[string]bool),
+		alerts:                make([]ContractAlert, 0),
+		alertSubscriptions:    make([]AlertSubscription, 0),
+		users:                 make(map[string]User),
+		indexerCursors:        make(map[string]uint32),
+		contractVerifications: make(map[string]ContractVerification),
 	}
 }
 
