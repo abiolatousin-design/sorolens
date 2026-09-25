@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/exaring/otelpgx"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/sorolens/sorolens/apps/api/internal/config"
 	"github.com/sorolens/sorolens/apps/api/internal/handler"
+	"github.com/sorolens/sorolens/apps/api/internal/middleware"
 	"github.com/sorolens/sorolens/apps/api/internal/router"
 	"github.com/sorolens/sorolens/apps/api/internal/store"
 	"github.com/sorolens/sorolens/apps/api/internal/verify"
@@ -34,7 +35,7 @@ func main() {
 	config, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("parse config", "err", err)
-	os.Exit(1)
+		os.Exit(1)
 	}
 	config.ConnConfig.Tracer = otelpgx.NewTracer()
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
@@ -68,6 +69,10 @@ func main() {
 		RedisClient: &realRedisClient{client: redisClient},
 		Logger:      logger,
 		Verifier:    verifier,
+
+		Cache:              &middleware.RedisCache{Client: redisClient},
+		CacheTTL:           cfg.CacheTTL,
+		SlackSigningSecret: cfg.SlackSigningSecret,
 	}
 
 	if err := seedInitialAdmin(context.Background(), h.Store, cfg.InitialAdminGitHubID, logger); err != nil {
@@ -77,7 +82,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
-		Handler:      router.New(h),
+		Handler:      router.New(h, cfg.RequestMaxBodyBytes),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
