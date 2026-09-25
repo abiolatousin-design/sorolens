@@ -116,7 +116,7 @@ func TestRebalanceAssignsOrphanedShardsToLiveWorkers(t *testing.T) {
 		t.Fatalf("EnsureShards: %v", err)
 	}
 	for _, id := range []string{"worker-a", "worker-b"} {
-		if err := store.Heartbeat(ctx, id, now); err != nil {
+		if err := store.Heartbeat(ctx, id, *now); err != nil {
 			t.Fatalf("Heartbeat(%s): %v", id, err)
 		}
 	}
@@ -159,10 +159,10 @@ func TestRebalanceReassignsStaleWorkerShards(t *testing.T) {
 	if err := c.EnsureShards(ctx); err != nil {
 		t.Fatalf("EnsureShards: %v", err)
 	}
-	if err := store.Heartbeat(ctx, "worker-a", now); err != nil {
+	if err := store.Heartbeat(ctx, "worker-a", *now); err != nil {
 		t.Fatalf("Heartbeat(a): %v", err)
 	}
-	if err := store.Heartbeat(ctx, "worker-b", now); err != nil {
+	if err := store.Heartbeat(ctx, "worker-b", *now); err != nil {
 		t.Fatalf("Heartbeat(b): %v", err)
 	}
 	if _, err := c.Rebalance(ctx); err != nil {
@@ -214,7 +214,7 @@ func TestRebalanceUnassignsWhenNoWorkerIsLive(t *testing.T) {
 	if err := c.EnsureShards(ctx); err != nil {
 		t.Fatalf("EnsureShards: %v", err)
 	}
-	if err := store.Heartbeat(ctx, "worker-a", now); err != nil {
+	if err := store.Heartbeat(ctx, "worker-a", *now); err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
 	if _, err := c.Rebalance(ctx); err != nil {
@@ -251,7 +251,7 @@ func TestFourWorkersCoverHundredContractsWithoutOverlap(t *testing.T) {
 
 	workerIDs := []string{"worker-1", "worker-2", "worker-3", "worker-4"}
 	for _, id := range workerIDs {
-		if err := store.Heartbeat(ctx, id, now); err != nil {
+		if err := store.Heartbeat(ctx, id, *now); err != nil {
 			t.Fatalf("Heartbeat(%s): %v", id, err)
 		}
 	}
