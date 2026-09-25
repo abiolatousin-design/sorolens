@@ -11,7 +11,9 @@
 // INDEXER_LEDGER_WINDOW (120960 ledgers ≈ 7 days), INDEXER_MAX_DURATION (270s),
 // VERIFY_BUILD_COMMAND (stellar contract build), VERIFY_TIMEOUT (10m),
 // VERIFY_WORKSPACE_DIR (OS temp directory).
-// REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB).
+// SENTRY_ENVIRONMENT (production), REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB).
+// Optional with no default: SENTRY_DSN. Error reporting is disabled entirely
+// when it is unset.
 //
 // Load collects every missing required variable into a single error message
 // so the process fails fast with actionable output.
@@ -64,6 +66,11 @@ type Config struct {
 	// startup. The user is keyed by this value as both its ID and GitHub ID so
 	// requests authenticated with X-User-ID or X-GitHub-ID resolve to it.
 	InitialAdminGitHubID string
+	// SentryDSN is the Sentry project DSN. Error reporting is disabled
+	// entirely when this is empty.
+	SentryDSN string
+	// SentryEnvironment tags reported events (e.g. production, staging).
+	SentryEnvironment string
 	// CacheTTL is the lifetime of cached GET responses (API_CACHE_TTL,
 	// default 30s). Zero disables the response cache.
 	CacheTTL time.Duration
@@ -85,6 +92,8 @@ func Load() (*Config, error) {
 		Port:                 getEnvDefault("PORT", "8080"),
 		LogLevel:             getEnvDefault("LOG_LEVEL", "info"),
 		InitialAdminGitHubID: os.Getenv("INITIAL_ADMIN_GITHUB_ID"),
+		SentryDSN:            os.Getenv("SENTRY_DSN"),
+		SentryEnvironment:    getEnvDefault("SENTRY_ENVIRONMENT", "production"),
 		SlackSigningSecret:   os.Getenv("SLACK_SIGNING_SECRET"),
 	}
 
