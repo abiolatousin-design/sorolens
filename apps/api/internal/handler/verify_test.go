@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sorolens/sorolens/apps/api/internal/config"
 	"github.com/sorolens/sorolens/apps/api/internal/handler"
 	"github.com/sorolens/sorolens/apps/api/internal/router"
 	"github.com/sorolens/sorolens/apps/api/internal/store"
@@ -42,7 +43,7 @@ func newVerifyHandler(ms *store.MockStore, v handler.ContractVerifier) http.Hand
 		Logger:      logger,
 		Verifier:    v,
 	}
-	return router.New(h)
+	return router.New(h, config.DefaultRequestMaxBodyBytes)
 }
 
 func seededVerifyStore(t *testing.T, wasmHash string) *store.MockStore {

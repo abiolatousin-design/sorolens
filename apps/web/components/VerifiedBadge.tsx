@@ -15,7 +15,7 @@ interface VerifiedBadgeProps {
  */
 export function VerifiedBadge({ contractId }: VerifiedBadgeProps) {
   const [verification, setVerification] = useState<ContractVerification | null>(
-    null,
+    null
   );
 
   useEffect(() => {

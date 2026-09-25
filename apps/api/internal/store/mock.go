@@ -26,6 +26,9 @@ type MockStore struct {
 	alertSubscriptions    []AlertSubscription
 	users                 map[string]User
 	healthScores          map[string]ContractHealthScore
+	failedEvents          map[int64]FailedEvent
+	failedEventSeq        int64
+	labels                []Label
 	indexerCursors        map[string]uint32
 	contractVersions      map[string][]ContractVersion
 	alertGroups           []AlertGroup
@@ -54,6 +57,50 @@ type MockStore struct {
 
 	UpsertVerificationErr error
 	GetVerificationErr    error
+
+	InsertFailedEventErr error
+	ListFailedEventsErr  error
+	GetFailedEventErr    error
+	DeleteFailedEventErr error
+}
+
+func (m *MockStore) UpsertLabel(_ context.Context, label Label) error {
+	for i, existing := range m.labels {
+		if existing.Label == label.Label && (label.Public || existing.WorkspaceID == label.WorkspaceID) {
+			m.labels[i] = label
+			return nil
+		}
+	}
+	m.labels = append(m.labels, label)
+	return nil
+}
+
+func (m *MockStore) ListLabels(_ context.Context, workspaceID, query string) ([]Label, error) {
+	query = strings.ToLower(query)
+	var out []Label
+	for _, label := range m.labels {
+		if !label.Public && label.WorkspaceID != workspaceID {
+			continue
+		}
+		if query == "" || strings.Contains(strings.ToLower(label.Label), query) || strings.Contains(strings.ToLower(label.Value), query) {
+			out = append(out, label)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockStore) ResolveLabel(_ context.Context, workspaceID, query string) (Label, error) {
+	for _, label := range m.labels {
+		if label.Public && strings.EqualFold(label.Label, query) {
+			return label, nil
+		}
+	}
+	for _, label := range m.labels {
+		if !label.Public && label.WorkspaceID == workspaceID && strings.EqualFold(label.Label, query) {
+			return label, nil
+		}
+	}
+	return Label{}, ErrNotFound
 }
 
 // NewMockStore returns an initialized MockStore.
@@ -66,6 +113,8 @@ func NewMockStore() *MockStore {
 		alerts:                make([]ContractAlert, 0),
 		alertSubscriptions:    make([]AlertSubscription, 0),
 		users:                 make(map[string]User),
+		failedEvents:          make(map[int64]FailedEvent),
+		labels:                make([]Label, 0),
 		indexerCursors:        make(map[string]uint32),
 		contractVerifications: make(map[string]ContractVerification),
 		contractVersions:      make(map[string][]ContractVersion),
