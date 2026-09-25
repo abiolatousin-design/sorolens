@@ -28,10 +28,10 @@ type MockStore struct {
 	healthScores          map[string]ContractHealthScore
 	failedEvents          map[int64]FailedEvent
 	failedEventSeq        int64
-	labels                []Label
 	indexerCursors        map[string]uint32
 	contractVersions      map[string][]ContractVersion
 	alertGroups           []AlertGroup
+	labels                []Label
 	contractVerifications map[string]ContractVerification
 
 	// Error injection

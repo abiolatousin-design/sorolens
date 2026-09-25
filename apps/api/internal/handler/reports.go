@@ -250,8 +250,8 @@ func reportFilename(contractID, month, ext string) string {
 	// Contract ids are 56-char strkeys; the tail is enough to identify one and
 	// keeps the filename usable.
 	short := contractID
-	if len(short) > 12 {
-		short = short[:12]
+	if len(short) > 11 {
+		short = short[:11]
 	}
 	return fmt.Sprintf("sorolens-sla-%s-%s.%s", short, month, ext)
 }
@@ -360,14 +360,8 @@ func renderReportPDF(m store.MonthlySLA, signature string) ([]byte, error) {
 			"  Signature    UNSIGNED — set REPORT_SIGNING_KEY to sign exports",
 		)
 	} else {
-		// Truncate for display only, and never assume the signature is at
-		// least 16 characters long.
-		short := signature
-		if len(short) > 16 {
-			short = short[:16]
-		}
 		lines = append(lines,
-			"  Signature    "+short+"...",
+			"  Signature    "+signature[:min(16, len(signature))]+"...",
 			"  (full value in the document Info dictionary and the",
 			"   X-Report-Signature response header)",
 		)
