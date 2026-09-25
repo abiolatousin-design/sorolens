@@ -60,6 +60,24 @@ type Config struct {
 	AnomalySigma float64
 	// AnomalyMinHistory is the minimum samples before detection starts.
 	AnomalyMinHistory int
+
+	// ShardCount is the number of contract shards in the horizontally-scaled
+	// topology (issue #272). The coordinator partitions contracts into this
+	// many shards and assigns each to a worker. Defaults to 1.
+	ShardCount int
+	// WorkerID identifies this worker in the coordinator's assignment table
+	// and heartbeats. Required in worker mode.
+	WorkerID string
+	// HeartbeatInterval is how often a worker refreshes its heartbeat.
+	// Defaults to 10s.
+	HeartbeatInterval time.Duration
+	// WorkerTimeout is how long a worker may go without heartbeating before
+	// the coordinator treats it as failed and reassigns its shards.
+	// Defaults to 30s.
+	WorkerTimeout time.Duration
+	// ReconcileInterval is how often the elected coordinator re-runs shard
+	// assignment. Defaults to 5s.
+	ReconcileInterval time.Duration
 }
 
 // Poller fetches and persists events and invocations for all tracked contracts.
@@ -168,29 +186,15 @@ func (p *Poller) processAll(ctx context.Context) error {
 			return fmt.Errorf("list contracts: %w", err)
 		}
 
-		for _, c := range contracts {
-			if ctx.Err() != nil {
-				return nil
-			}
-			if c.Status != "active" && c.Status != "backfilling" {
-				continue
-			}
-			// Once a contract's batch starts, let it run to completion and
-			// commit its cursor even if ctx is cancelled mid-flight (SIGTERM,
-			// or the once-mode max-duration timeout): only the decision to
-			// start the *next* contract's batch respects cancellation, via
-			// the ctx.Err() check above. Without this, a shutdown signal
-			// arriving mid-fetch would abort the in-flight RPC/store calls
-			// and lose that contract's progress for the pass instead of
-			// finishing it cleanly.
-			if err := p.processContract(context.WithoutCancel(ctx), c); err != nil {
-				// Log and continue; one failing contract must not block others.
-				p.log.Error("failed to index contract",
-					"contract_id", c.ID,
-					"err", err,
-				)
-			}
-		}
+		// Once a contract's batch starts, let it run to completion and commit
+		// its cursor even if ctx is cancelled mid-flight (SIGTERM, or the
+		// once-mode max-duration timeout): only the decision to start the
+		// *next* contract's batch respects cancellation, via the ctx.Err()
+		// checks here and in ProcessContracts. Without this, a shutdown signal
+		// arriving mid-fetch would abort the in-flight RPC/store calls and lose
+		// that contract's progress for the pass instead of finishing it
+		// cleanly.
+		p.ProcessContracts(ctx, contracts)
 
 		if next == "" {
 			break

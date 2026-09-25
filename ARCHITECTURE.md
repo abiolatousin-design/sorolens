@@ -682,3 +682,29 @@ Upstash Redis is used because it is serverless (no idle cost), has a free tier, 
 - Postgres `WHERE (ledger, id) < (cursor_ledger, cursor_id) ORDER BY ledger DESC, id DESC LIMIT N` uses the composite index efficiently.
 
 **Tradeoff:** Clients cannot jump to an arbitrary page number. This is acceptable for an observability dashboard where users scroll through a feed; it is not a spreadsheet export use case.
+
+---
+
+## 6. Horizontally-scaled indexer (worker sharding)
+
+The single-process indexer (section 5.1) is one deployment of the same binary.
+For 100+ tracked contracts it can be split into one **coordinator** plus N
+**workers**, all selected with `--role`:
+
+- Contracts are partitioned into `--shards` shards by a deterministic hash of
+  the contract ID (FNV-1a), so every process derives the same shard without
+  coordination.
+- The coordinator elects itself leader with the Postgres session-level
+  advisory lock `pg_try_advisory_lock(272272272)`. Non-leaders exit
+  immediately; Postgres releases the lock if the leader dies.
+- Workers pull their assignment (`shard_id`, `[contract_ids]`) from the
+  `indexer_shards` table and heartbeat into `indexer_workers`. A worker whose
+  heartbeat is older than `INDEXER_WORKER_TIMEOUT` is treated as failed and
+  its shards are reassigned on the next reconcile pass.
+- The existing indexer main loop (`Poller.processContract`) is the worker
+  body, so event fetching, Wasm-upgrade detection, and cursor commits are
+  unchanged per contract.
+
+Schema lives in migration `000010_indexer_shards`; the deployment guide,
+role table, environment variables, and failover timings are in
+[`docs/indexer-sharding.md`](./docs/indexer-sharding.md).

@@ -24,12 +24,24 @@ func main() {
 		defer tp.Shutdown(context.Background())
 	}
 
-	mode := flag.String("mode", "once", "Run mode: once or continuous")
+	mode := flag.String("mode", "once", "Run mode for the standalone role: once or continuous")
+	role := flag.String("role", envString("INDEXER_ROLE", "standalone"), "Process role: standalone, coordinator, or worker")
+	shardCount := flag.Int("shards", envInt("INDEXER_SHARDS", 1), "Number of contract shards (coordinator/worker roles)")
+	workerID := flag.String("worker-id", envString("INDEXER_WORKER_ID", ""), "Worker identity for heartbeats (defaults to hostname)")
 	maxDuration := flag.Duration("max-duration", 270*time.Second, "Maximum duration for a single pass (once mode)")
 	pollInterval := flag.Duration("poll-interval", 5*time.Minute, "Sleep between passes (continuous mode)")
 	ledgerWindow := flag.Uint("ledger-window", 120960, "Ledger window per getEvents call")
 	metricsAddr := flag.String("metrics-addr", envString("INDEXER_METRICS_ADDR", ":9100"), "Address for the Prometheus /metrics HTTP server (empty disables it)")
 	flag.Parse()
+
+	resolvedWorkerID := *workerID
+	if resolvedWorkerID == "" {
+		if host, err := os.Hostname(); err == nil {
+			resolvedWorkerID = host
+		} else {
+			resolvedWorkerID = "worker-unknown"
+		}
+	}
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -43,6 +55,11 @@ func main() {
 		AnomalyLookbackHours: envInt("INDEXER_ANOMALY_LOOKBACK_HOURS", 168),
 		AnomalySigma:         envFloat("INDEXER_ANOMALY_SIGMA", 3),
 		AnomalyMinHistory:    envInt("INDEXER_ANOMALY_MIN_HISTORY", 12),
+		ShardCount:           *shardCount,
+		WorkerID:             resolvedWorkerID,
+		HeartbeatInterval:    envDuration("INDEXER_HEARTBEAT_INTERVAL", 10*time.Second),
+		WorkerTimeout:        envDuration("INDEXER_WORKER_TIMEOUT", 30*time.Second),
+		ReconcileInterval:    envDuration("INDEXER_RECONCILE_INTERVAL", 5*time.Second),
 	}
 
 	// Wire up real dependencies.
@@ -134,9 +151,28 @@ func main() {
 		}
 	}()
 
-	log.Info("sorolens/indexer starting", "mode", *mode)
-	if err := p.Run(ctx, *mode); err != nil {
-		log.Error("indexer error", "err", err)
+	// Shard coordination state for the horizontally-scaled topology (issue
+	// #272). The Postgres-backed poller.ShardStore implementation is wired here
+	// in production so a coordinator and every worker share the same
+	// assignment table and heartbeats. The in-memory store below keeps the
+	// roles runnable in local development, where all roles share one process.
+	shardStore := poller.NewMemoryShardStore()
+
+	log.Info("sorolens/indexer starting", "role", *role, "mode", *mode)
+	var runErr error
+	switch *role {
+	case "standalone":
+		runErr = p.Run(ctx, *mode)
+	case "coordinator":
+		runErr = poller.NewCoordinator(st, shardStore, cfg, log).Run(ctx)
+	case "worker":
+		runErr = poller.NewWorker(cfg.WorkerID, p, shardStore, cfg, log).Run(ctx)
+	default:
+		log.Error("unknown role (want standalone|coordinator|worker)", "role", *role)
+		os.Exit(2)
+	}
+	if runErr != nil {
+		log.Error("indexer error", "err", runErr)
 		os.Exit(1)
 	}
 	log.Info("sorolens/indexer done")
@@ -290,7 +326,7 @@ func (s *stubStore) CreateMonthlyPartitionIfNotExists(_ context.Context, _ int, 
 	return nil
 }
 func (s *stubStore) GetIndexerCursor(_ context.Context, _ string) (uint32, error) { return 0, nil }
-func (s *stubStore) SetIndexerCursor(_ context.Context, _ string, _ uint32) error  { return nil }
+func (s *stubStore) SetIndexerCursor(_ context.Context, _ string, _ uint32) error { return nil }
 func (s *stubStore) BatchInsertWithCursor(_ context.Context, _ string, _ uint32, _ []poller.Event, _ []poller.Invocation, _ poller.SyncState) error {
 	return nil
 }
@@ -348,6 +384,19 @@ func envString(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envDuration reads a Go duration env var with a default.
+func envDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return def
+	}
+	return d
 }
 
 // envBool reads a boolean env var with a default.
