@@ -12,6 +12,8 @@
 // VERIFY_BUILD_COMMAND (stellar contract build), VERIFY_TIMEOUT (10m),
 // VERIFY_WORKSPACE_DIR (OS temp directory).
 // SENTRY_ENVIRONMENT (production), REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB).
+// COLD_STORAGE_THRESHOLD_DAYS (90), COLD_STORAGE_REGION (us-east-1).
+// COLD_STORAGE_BUCKET is optional: leaving it empty disables the cold tier.
 // SENTRY_ENVIRONMENT (production), REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB),
 // API_CACHE_TTL (30s), API_REQUEST_TIMEOUT (30s), API_STREAM_TIMEOUT (5m).
 // Optional with no default: SENTRY_DSN. Error reporting is disabled entirely
@@ -64,6 +66,23 @@ type Config struct {
 	// VerifyWorkspaceDir is the parent directory for verification workspaces.
 	// Empty means the OS temporary directory.
 	VerifyWorkspaceDir string
+	// ColdStorageBucket is the S3-compatible bucket holding archived events.
+	// Empty disables the cold-storage tier entirely: the archive job refuses
+	// to run and the API never falls back to object storage.
+	ColdStorageBucket string
+	// ColdStorageThresholdDays is how old an event must be before the nightly
+	// archive job moves it out of Postgres.
+	ColdStorageThresholdDays int
+	// ColdStorageEndpoint overrides the S3 endpoint for MinIO, Backblaze B2,
+	// and other S3-compatible services. Empty uses the AWS endpoint.
+	ColdStorageEndpoint string
+	// ColdStorageRegion is the signing region for the archive bucket.
+	ColdStorageRegion string
+	// ColdStorageAccessKeyID and ColdStorageSecretAccessKey are optional
+	// explicit credentials. Empty falls back to the default AWS credential
+	// chain.
+	ColdStorageAccessKeyID     string
+	ColdStorageSecretAccessKey string
 	// InitialAdminGitHubID, when set, seeds a user with the admin role on
 	// startup. The user is keyed by this value as both its ID and GitHub ID so
 	// requests authenticated with X-User-ID or X-GitHub-ID resolve to it.
@@ -139,6 +158,20 @@ func Load() (*Config, error) {
 	cfg.VerifyTimeout = verifyTimeout
 
 	cfg.VerifyWorkspaceDir = os.Getenv("VERIFY_WORKSPACE_DIR")
+
+	// Cold storage (issue #146). Optional: an empty bucket disables the tier.
+	cfg.ColdStorageBucket = os.Getenv("COLD_STORAGE_BUCKET")
+	cfg.ColdStorageEndpoint = os.Getenv("COLD_STORAGE_ENDPOINT")
+	cfg.ColdStorageRegion = getEnvDefault("COLD_STORAGE_REGION", "us-east-1")
+	cfg.ColdStorageAccessKeyID = os.Getenv("COLD_STORAGE_ACCESS_KEY_ID")
+	cfg.ColdStorageSecretAccessKey = os.Getenv("COLD_STORAGE_SECRET_ACCESS_KEY")
+
+	thresholdStr := getEnvDefault("COLD_STORAGE_THRESHOLD_DAYS", "90")
+	threshold, err := strconv.Atoi(thresholdStr)
+	if err != nil || threshold < 1 {
+		return nil, fmt.Errorf("COLD_STORAGE_THRESHOLD_DAYS: invalid integer %q: must be a positive number of days", thresholdStr)
+	}
+	cfg.ColdStorageThresholdDays = threshold
 
 	cacheTTLStr := getEnvDefault("API_CACHE_TTL", "30s")
 	cacheTTL, err := time.ParseDuration(cacheTTLStr)
