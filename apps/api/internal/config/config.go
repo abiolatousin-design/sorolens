@@ -12,6 +12,8 @@
 // VERIFY_BUILD_COMMAND (stellar contract build), VERIFY_TIMEOUT (10m),
 // VERIFY_WORKSPACE_DIR (OS temp directory).
 // SENTRY_ENVIRONMENT (production), REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB).
+// SENTRY_ENVIRONMENT (production), REQUEST_MAX_BODY_BYTES (1048576 bytes = 1 MiB),
+// API_CACHE_TTL (30s), API_REQUEST_TIMEOUT (30s), API_STREAM_TIMEOUT (5m).
 // Optional with no default: SENTRY_DSN. Error reporting is disabled entirely
 // when it is unset.
 //
@@ -74,6 +76,12 @@ type Config struct {
 	// CacheTTL is the lifetime of cached GET responses (API_CACHE_TTL,
 	// default 30s). Zero disables the response cache.
 	CacheTTL time.Duration
+	// RequestTimeout caps handling of every /api/v1 request except the SSE
+	// stream; past it the client gets a 503 (API_REQUEST_TIMEOUT, default 30s).
+	RequestTimeout time.Duration
+	// StreamTimeout bounds one SSE connection on /api/v1/stream/events
+	// (API_STREAM_TIMEOUT, default 5m).
+	StreamTimeout time.Duration
 	// SlackSigningSecret verifies Slack slash command requests
 	// (SLACK_SIGNING_SECRET). Empty disables the Slack command endpoint.
 	SlackSigningSecret string
@@ -138,6 +146,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("API_CACHE_TTL: invalid duration %q", cacheTTLStr)
 	}
 	cfg.CacheTTL = cacheTTL
+
+	reqTimeoutStr := getEnvDefault("API_REQUEST_TIMEOUT", "30s")
+	reqTimeout, err := time.ParseDuration(reqTimeoutStr)
+	if err != nil || reqTimeout <= 0 {
+		return nil, fmt.Errorf("API_REQUEST_TIMEOUT: invalid duration %q (must be > 0)", reqTimeoutStr)
+	}
+	cfg.RequestTimeout = reqTimeout
+
+	streamTimeoutStr := getEnvDefault("API_STREAM_TIMEOUT", "5m")
+	streamTimeout, err := time.ParseDuration(streamTimeoutStr)
+	if err != nil || streamTimeout <= 0 {
+		return nil, fmt.Errorf("API_STREAM_TIMEOUT: invalid duration %q (must be > 0)", streamTimeoutStr)
+	}
+	cfg.StreamTimeout = streamTimeout
 
 	var missing []string
 	if cfg.DatabaseURL == "" {
